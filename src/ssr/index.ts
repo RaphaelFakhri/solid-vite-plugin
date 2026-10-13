@@ -1397,8 +1397,20 @@ export function startServe(
       );
     }
     lines.push(`      chunk = chunk.replace('</head>', ${headParts.join(' + ')} + '</head>');`);
+    lines.push(`    }`);
+    if (clientMode) {
+      // The shell-end marker (@solidjs/web 2.0.0-rc.15, solidjs/solid#4002)
+      // closes every shell that rendered `<HydrationScript />`. It writes to
+      // `_$HY` without a guard, so it goes with the bootstrap stripped above;
+      // left alone it throws `_$HY is not defined`. It follows the shell's
+      // records rather than its head, so it is matched in any chunk.
+      lines.push(
+        `    if (chunk.includes('_$HY.s[')) {`,
+        `      chunk = chunk.replace(/<script(?:\\s[^>]*)?>_\\$HY\\.s\\[[\\s\\S]*?<\\/script>/, '');`,
+        `    }`,
+      );
+    }
     lines.push(
-      `    }`,
       `    if (first) { first = false; chunk = '<!DOCTYPE html>' + chunk; }`,
       `    return chunk;`,
       `  };`,
