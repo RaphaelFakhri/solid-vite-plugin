@@ -1154,7 +1154,7 @@ export function startServe(
     const composeServerFunctions = internal.serverFunctions;
 
     const lines = [
-      `import { createRequestEvent, createSSRResponse, commitEventResponse, scriptNonce, styleNonce, isResponseEnvelope } from '@solidjs/web';`,
+      `import { createRequestEvent, createSSRResponse, commitEventResponse, isResponseEnvelope } from '@solidjs/web';`,
       ...(isBuild ? [`import { reportServerError } from 'solid-js/internal';`] : []),
       `import { provideRequestEvent } from ${JSON.stringify(STORAGE_SOURCE)};`,
       `import * as entry from ${JSON.stringify(entryServerSpec())};`,
@@ -1326,12 +1326,20 @@ export function startServe(
       `  return value ? ' nonce="' + escapeAttribute(value) + '"' : '';`,
       `}`,
       ``,
+      // One destination of a `CSPNonce` (a string, or a `{ script, style }`
+      // pair with `false` for an un-nonced destination). Kept local: the
+      // matching @solidjs/web helpers are internal.
+      `function destinationNonce(nonce, destination) {`,
+      `  const value = typeof nonce === 'string' ? nonce : nonce && nonce[destination];`,
+      `  return typeof value === 'string' && value ? value : undefined;`,
+      `}`,
+      ``,
       // The client entry and the dev scripts take the script destination of
       // a `{ script, style }` pair; the dev styles and the csp-nonce meta the
       // style destination.
       `function createHtmlChunkTransform(clientEntry, extraHead, nonce) {`,
-      `  const nonceAttr = nonceAttribute(scriptNonce(nonce));`,
-      `  const styleAttr = nonceAttribute(styleNonce(nonce));`,
+      `  const nonceAttr = nonceAttribute(destinationNonce(nonce, 'script'));`,
+      `  const styleAttr = nonceAttribute(destinationNonce(nonce, 'style'));`,
       `  let first = true;`,
       `  let injected = false;`,
       `  return (chunk) => {`,
@@ -1527,7 +1535,7 @@ export function startServe(
       // single-script surfaces.
       `  return createSSRResponse(result, event, {`,
       `    responseInit: options.responseInit,`,
-      `    nonce: scriptNonce(nonce) || null,`,
+      `    nonce: destinationNonce(nonce, 'script') || null,`,
       `    transformChunk: createHtmlChunkTransform(clientEntry, options.devHead, nonce),`,
       `  });`,
       `}`,
