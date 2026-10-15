@@ -1009,8 +1009,9 @@ here is merged over them and applied to whichever backend is selected.
 
 ##### options.solid.sourceNames
 
-- Type: `boolean | { components?: boolean; bindings?: boolean; primitives?: boolean }`
-- Default: on in dev and under `observe`, off in production builds
+- Type:
+  `boolean | { components?: boolean; bindings?: boolean; primitives?: boolean; locations?: boolean }`
+- Default: on in dev and under `observe`, off in production builds; `locations` on in dev only
 
 Which names as written in source are carried into output so the dev and observe runtimes
 can label the reactive graph after minification — in diagnostics, `whyDidRun` chains, error
@@ -1024,6 +1025,13 @@ owner paths, and the Chrome performance tracks. Three kinds:
   are declared as (`count`, `doubled`, `todos.title`), prefixed with the enclosing
   non-component function for composed primitives (`createCounter.value`). An explicit
   `name` option is never overridden.
+- `locations` adds a `file:line:col` next to every name the other kinds emit —
+  `createComponent(Home, props, "Home", "src/App.tsx:12:5")`,
+  `createSignal(0, { name: "count", loc: "src/store.ts:3:22" })` — so a diagnostic report, a
+  `whyDidRun` chain, or a devtools entry points at the line that declared the node. Paths are
+  relative to the Vite root, so under `vite dev` the console's
+  `http://localhost:5173/src/App.tsx:12:5` opens the file in the browser's sources panel. A
+  location is only emitted where its name is.
 
 The kinds come from two different places. `components` and `bindings` are the JSX compiler's
 own `sourceNames` option, passed through to whichever backend compiles your JSX
@@ -1036,10 +1044,23 @@ too.
 The default follows the posture: on whenever the plugin compiles for the dev runtime (the
 same `dev` flag it hands the compilers — `vite dev`, or `dev: true`) and for `observe`
 builds; off for production builds, whose runtime ignores the names anyway, so production
-output is unchanged. `sourceNames: false` turns every kind off, in dev too; `true` turns every
-kind on, production builds included. The object form sets the listed kinds and leaves the
-rest at the posture default — `{ primitives: false }` keeps component and binding names in
-dev but skips the primitives pass.
+output is unchanged. `locations` is the one kind that does not follow `observe`: an observe
+build is a production bundle, and a source path inside it is an opt-in, so it is on in dev
+only. `sourceNames: false` turns every kind off, in dev too; `true` turns every kind on,
+production builds included. The object form sets the listed kinds and leaves the rest at the
+posture default — `{ primitives: false }` keeps component and binding names in dev but skips
+the primitives pass; `{ locations: true }` ships locations in an observe build.
+
+| `sourceNames`          | dev                    | `observe` build              | production build            |
+| ---------------------- | ---------------------- | ---------------------------- | --------------------------- |
+| (unset)                | all on                 | names on, `locations` off    | all off                     |
+| `true`                 | all on                 | all on                       | all on                      |
+| `false`                | all off                | all off                      | all off                     |
+| `{ kind: true/false }` | as given; the rest on  | as given; the rest as unset  | as given; the rest off      |
+
+`locations` needs a compiler release that takes the option; on an older `@solidjs/compiler`
+the names keep coming without locations, with a one-time warning when it was asked for
+explicitly.
 
 #### options.typescript
 
