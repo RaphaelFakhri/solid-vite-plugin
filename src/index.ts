@@ -214,6 +214,10 @@ export default function solidPlugin(options: Partial<Options> = {}): Plugin {
   let projectRoot = process.cwd();
   let isTestMode = false;
   let solidPkgsConfig: Awaited<ReturnType<typeof crawlFrameworkPkgs>>;
+  // Packages that import solid-js without a `solid` export condition, found
+  // by the crawl in test mode. They are inlined with solid-js (see
+  // `test.server.deps` below).
+  const testRuntimeConsumers = new Set<string>();
 
   return {
     name: 'solid',
@@ -234,6 +238,19 @@ export default function solidPlugin(options: Partial<Options> = {}): Plugin {
         isBuild: command === 'build',
         isFrameworkPkgByJson(pkgJson) {
           return containsSolidField(pkgJson.exports || {});
+        },
+        // Only records the runtime consumers for the jsdom test posture.
+        // Returning false keeps vitefu's output unchanged.
+        isSemiFrameworkPkgByJson(pkgJson) {
+          if (
+            isTestMode &&
+            !options.ssr &&
+            typeof pkgJson.name === 'string' &&
+            (pkgJson.dependencies?.['solid-js'] || pkgJson.peerDependencies?.['solid-js'])
+          ) {
+            testRuntimeConsumers.add(pkgJson.name);
+          }
+          return false;
         },
       });
 
@@ -260,7 +277,28 @@ export default function solidPlugin(options: Partial<Options> = {}): Plugin {
             /solid-js/.test(item.toString()),
           )
         ) {
-          test.server = { deps: { external: [/solid-js/] } };
+          if (options.ssr) {
+            test.server = { deps: { external: [/solid-js/] } };
+          } else if (userTest.server?.deps?.inline !== true) {
+            // An externalized package is imported natively, and its own
+            // imports are resolved by the host runtime, not by Vite. Node
+            // gets the `browser` condition from vitest's worker
+            // `--conditions`, but Deno (in a worker thread) resolves
+            // `deno`/`node` and lands on the server build: `render` from
+            // `@solidjs/testing-library` threw "Client-only API called on the
+            // server side" (#369). Inline solid-js and the packages that
+            // import it, so these imports go through Vite's `browser`
+            // condition and load one client-build instance. A consumer left
+            // external would load a second, native copy. Packages with a
+            // `solid` export condition are inlined already through vitefu.
+            // A user `inline` list is merged with this one; `inline: true`
+            // inlines everything already.
+            test.server = {
+              deps: {
+                inline: [/[\\/]node_modules[\\/]solid-js[\\/]/, ...testRuntimeConsumers],
+              },
+            };
+          }
         }
         if (!userTest.browser?.enabled) {
           // vitest browser mode already has bundled jest-dom assertions
