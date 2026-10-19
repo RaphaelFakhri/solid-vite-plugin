@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,7 +21,7 @@ describe('server function manifest under vite dev', () => {
   }
 
   beforeAll(async () => {
-    root = await mkdtemp(path.join(tmpdir(), 'solid-vite-plugin-manifest-'));
+    root = await realpath(await mkdtemp(path.join(tmpdir(), 'solid-vite-plugin-manifest-')));
     await symlink(
       fileURLToPath(new URL('../../node_modules', import.meta.url)),
       path.join(root, 'node_modules'),
@@ -67,5 +67,33 @@ describe('server function manifest under vite dev', () => {
     expect(second.code).toContain('"/src/greet.ts"');
     expect(second.code).toContain('"/src/shout.ts"');
     expect(second.elapsed).toBeLessThan(500);
+  });
+
+  it('drops a deleted module', async () => {
+    const file = path.join(root, 'src/shout.ts');
+    await unlink(file);
+    // What Vite's watcher does on unlink.
+    await Promise.all(
+      Object.values(server.environments).map((environment) =>
+        environment.pluginContainer.watchChange(file, { event: 'delete' }),
+      ),
+    );
+    const { code } = await loadManifest();
+    expect(code).toContain('"/src/greet.ts"');
+    expect(code).not.toContain('/src/shout.ts');
+  });
+
+  it('drops a module that no longer declares server functions', async () => {
+    await writeFile(
+      path.join(root, 'src/greet.ts'),
+      'export const greet = (name: string) => name;\n',
+    );
+    const module = server.environments.client.moduleGraph.getModuleById(
+      path.join(root, 'src/greet.ts'),
+    );
+    if (module) server.environments.client.moduleGraph.invalidateModule(module);
+    await server.environments.client.transformRequest('/src/greet.ts');
+    const { code } = await loadManifest();
+    expect(code).not.toContain('/src/greet.ts');
   });
 });
