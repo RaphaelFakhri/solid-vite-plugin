@@ -830,9 +830,16 @@ export function serverFunctions(
               manifest.modules.server.add(entry);
             }
           }
-          const current = new Debouncer(() =>
-            [...manifest.modules[mode]].map((entry) => `import ${JSON.stringify(entry)};`).join('\n'),
-          );
+          const source = () =>
+            [...manifest.modules[mode]]
+              .map((entry) => `import ${JSON.stringify(entry)};`)
+              .join('\n');
+          // In dev, each transform that registers a new module invalidates
+          // the manifest, and a function's module is always transformed
+          // before anything can call it. So the current list is enough, and
+          // waiting would only delay every load.
+          if (!isBuild) return source();
+          const current = new Debouncer(source);
           preload[mode] = current;
           const result = await current.promise.reference;
           return result;
