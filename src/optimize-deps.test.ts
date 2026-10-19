@@ -40,9 +40,10 @@ describe('optimizeDeps.include under vite dev', () => {
     return config.optimizeDeps.include ?? [];
   }
 
-  // #428: `@solidjs/web/frames` imports the client runtime by this subpath.
-  // With `@solidjs/web` excluded it must still be pre-bundled, or the frames
-  // bundle loads a second copy of the server-functions client.
+  // #428: `@solidjs/web/frames` and `@solidjs/web/server-functions/rich-args`
+  // import the client runtime by this subpath. With `@solidjs/web` excluded
+  // it must still be pre-bundled, or they load a second copy of the
+  // server-functions client.
   it('pre-bundles the server-functions client subpath with server components', async () => {
     const include = await clientInclude({ ssr: true, serverFunctions: { components: true } });
     expect(include).toEqual(
@@ -54,9 +55,23 @@ describe('optimizeDeps.include under vite dev', () => {
     );
   });
 
-  it('leaves the subpath out without server components', async () => {
+  it('pre-bundles the server-functions client subpath with plain server functions', async () => {
     const include = await clientInclude({ ssr: true, serverFunctions: true });
-    expect(include).toContain('@solidjs/web/server-functions');
+    expect(include).toEqual(
+      expect.arrayContaining([
+        '@solidjs/web/server-functions',
+        '@solidjs/web/server-functions/client',
+      ]),
+    );
+    expect(include).not.toContain('@solidjs/web/frames');
+  });
+
+  it('leaves the subpath out for a custom client runtime', async () => {
+    const include = await clientInclude({
+      ssr: true,
+      serverFunctions: { runtime: { client: 'my-runtime/client', server: 'my-runtime/server' } },
+    });
+    expect(include).toContain('my-runtime/client');
     expect(include).not.toContain('@solidjs/web/server-functions/client');
   });
 

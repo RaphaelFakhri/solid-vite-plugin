@@ -1655,10 +1655,16 @@ export default function solidPlugin(options: Partial<Options> = {}): Plugin[] {
             // runs the transform that adds its import, so the first "use server"
             // module forces the same re-optimize + full reload (in Vitest
             // browser mode, "Vite unexpectedly reloaded a test").
+            // `@solidjs/web/server-functions/rich-args`, which the app imports
+            // itself, also reaches the default runtime by the `/client`
+            // subpath, so that is listed as well for the same reason as
+            // frames above.
             ...(command === 'serve' &&
             serverFunctionsClientDep &&
             !(serverComponents && serverFunctionsClientDep === '@solidjs/web/server-functions')
-              ? [serverFunctionsClientDep]
+              ? serverFunctionsClientDep === '@solidjs/web/server-functions'
+                ? [serverFunctionsClientDep, '@solidjs/web/server-functions/client']
+                : [serverFunctionsClientDep]
               : []),
             // The attribution engine and the Chrome performance-tracks
             // recorder are subpaths the scanner only sees when the app's own
